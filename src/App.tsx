@@ -24,9 +24,12 @@ import { HandoffEscalations } from './components/HandoffEscalations';
 import { TrackingNumbersModal } from './components/TrackingNumbersModal';
 import { PhoneSimulatorModal } from './components/PhoneSimulatorModal';
 import { LiveProductionDeployModal } from './components/LiveProductionDeployModal';
+import { OutboundDialer } from './components/outbound/OutboundDialer';
 
 export default function App() {
-  const [currentTab, setCurrentTab] = useState<NavTab>('overview');
+  const [currentTab, setCurrentTab] = useState<NavTab>(() =>
+    new URLSearchParams(window.location.search).has('google') ? 'dialer' : 'overview',
+  );
   const [selectedClientId, setSelectedClientId] = useState<string | 'all'>('all');
   const [showPhoneSimulator, setShowPhoneSimulator] = useState(false);
   const [showProductionModal, setShowProductionModal] = useState(false);
@@ -122,6 +125,8 @@ export default function App() {
             onNavigateTab={setCurrentTab}
           />
         )}
+
+        {currentTab === 'dialer' && <OutboundDialer />}
 
         {currentTab === 'inbox' && (
           <InboxConversations

@@ -25,3 +25,27 @@ services:
         value: Polly.Joanna
       - key: HUMAN_FORWARD_NUMBER
         sync: false
+      # ── Outbound dialer & reminders (see README "Outbound dialer") ──
+      # Password for the dashboard. The dialer stays locked until this is set.
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      # Your Twilio phone number, e.g. +13055550100
+      - key: TWILIO_FROM_NUMBER
+        sync: false
+      # Optional: Google Calendar + Meet links (README step 6)
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+    # To keep contacts/appointments across deploys and keep the dialer awake,
+    # switch to the Starter plan and uncomment these lines (README step 3):
+    # plan: starter
+    # disk:
+    #   name: data
+    #   mountPath: /var/data
+    #   sizeGB: 1
+    # and add under envVars:  - key: DATA_DIR / value: /var/data
