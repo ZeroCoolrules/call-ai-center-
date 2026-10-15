@@ -145,7 +145,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">3. AI Agent</div>
             <div className="text-xs font-bold text-emerald-300 mt-1 flex items-center justify-center gap-1">
               <Bot className="w-3.5 h-3.5 text-emerald-400" />
-              Gemini 3.8 Flash
+              Local LLM (Ollama)
             </div>
             <div className="text-[10px] text-slate-500 mt-0.5">Availability & Rules</div>
           </div>

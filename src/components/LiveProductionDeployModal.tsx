@@ -36,7 +36,7 @@ export const LiveProductionDeployModal: React.FC<LiveProductionDeployModalProps>
   if (!isOpen) return null;
 
   const dreamClient = clients.find(c => c.id === 'client-dream-wellness') || clients[0];
-  const publicAppUrl = typeof window !== 'undefined' ? window.location.origin : 'https://ais-dev-h6d3f7sog3ll4zns2qwtbj-813542255886.us-east1.run.app';
+  const publicAppUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
   const vercelBookingUrl = 'https://dream-therapy-massage.vercel.app/';
 
   const handleCopy = (text: string, key: string) => {
@@ -158,55 +158,55 @@ export const LiveProductionDeployModal: React.FC<LiveProductionDeployModalProps>
                   </a>
                 </div>
 
-                {/* Gemini AI */}
+                {/* Local AI */}
                 <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-white text-base">Google Gemini AI</span>
+                    <span className="font-bold text-white text-base">Local AI (Ollama)</span>
                     <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                       100% Free Tier
                     </span>
                   </div>
                   <p className="text-xs text-slate-400 leading-relaxed">
-                    Uses <strong>gemini-3.8-flash</strong>. Google AI Studio offers a completely free rate limit (up to 15 RPM / 1 million tokens/min free forever).
+                    Runs an open model like <strong>llama3.2</strong> on your own computer. No API key, no cloud account, no usage bill, no rate limits.
                   </p>
                   <ul className="text-xs text-slate-400 space-y-1">
-                    <li>• Free: 15 Requests Per Minute</li>
+                    <li>• $0: runs on your own hardware</li>
                     <li>• Auto-appointment slot detection</li>
                     <li>• Natural patient intake conversations</li>
                   </ul>
                   <a
-                    href="https://aistudio.google.com/apikey"
+                    href="https://ollama.com/download"
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-300 font-bold"
                   >
-                    Get Free Gemini Key <ExternalLink className="w-3.5 h-3.5" />
+                    Download Ollama <ExternalLink className="w-3.5 h-3.5" />
                   </a>
                 </div>
 
                 {/* Hosting */}
                 <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-white text-base">Vercel / Cloud Run</span>
+                    <span className="font-bold text-white text-base">Self-Hosted + Tunnel</span>
                     <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                       Free Hobby Tier
                     </span>
                   </div>
                   <p className="text-xs text-slate-400 leading-relaxed">
-                    Matches your existing <code className="text-cyan-300">dream-therapy-massage.vercel.app</code> deployment. Zero hosting costs for low to medium traffic.
+                    Run <code className="text-cyan-300">npm start</code> on your own computer and expose it with a free <code className="text-cyan-300">cloudflared</code> tunnel. No Google Cloud, no hosting bill.
                   </p>
                   <ul className="text-xs text-slate-400 space-y-1">
-                    <li>• Free HTTPS SSL certificate</li>
-                    <li>• 100 GB bandwidth included</li>
-                    <li>• Instant deployments on Git push</li>
+                    <li>• Free HTTPS URL for Twilio webhooks</li>
+                    <li>• AI model stays on your machine</li>
+                    <li>• Real-time SMS &amp; voice replies</li>
                   </ul>
                   <a
-                    href="https://vercel.com"
+                    href="https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/"
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-300 font-bold"
                   >
-                    View Vercel Dashboard <ExternalLink className="w-3.5 h-3.5" />
+                    Free Cloudflare Tunnel <ExternalLink className="w-3.5 h-3.5" />
                   </a>
                 </div>
               </div>

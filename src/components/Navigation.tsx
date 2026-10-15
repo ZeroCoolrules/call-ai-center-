@@ -121,7 +121,7 @@ export const Navigation: React.FC<NavigationProps> = ({
               onOpenProductionModal();
             }}
             className="flex items-center gap-2 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs uppercase tracking-wide px-3.5 py-2 rounded-lg shadow-lg shadow-emerald-500/20 transition-all transform hover:scale-[1.02] active:scale-95 border border-emerald-400/50"
-            title="Real-World Live Production Mode (No Simulator, Free Twilio & Gemini Setup)"
+            title="Real-World Live Production Mode (No Simulator, Free Twilio & Local AI Setup)"
           >
             <Rocket className="w-4 h-4 text-emerald-200" />
             <span className="hidden md:inline">Go Live (Production)</span>

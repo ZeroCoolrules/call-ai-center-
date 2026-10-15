@@ -253,7 +253,7 @@ export async function processInboundMessage(input: AgentProcessInput): Promise<A
     };
   }
 
-  // 3. Try server-side Gemini API if reachable
+  // 3. Try the server-side AI model (local Ollama / any OpenAI-compatible LLM) if reachable
   try {
     const res = await fetch('/api/agent/chat', {
       method: 'POST',
@@ -269,7 +269,7 @@ export async function processInboundMessage(input: AgentProcessInput): Promise<A
     if (res.ok) {
       const data = await res.json();
       if (data && data.reply) {
-        // If Gemini provided structured booking data
+        // If the model provided structured booking data
         if (data.isBookingConfirmed && data.bookingDetails) {
           const matchedSvc = matchService(leadMessage, client) || client.services[0];
           const bookingDate = data.bookingDetails.dateIso || '2026-07-07T18:00:00Z';
@@ -324,7 +324,7 @@ export async function processInboundMessage(input: AgentProcessInput): Promise<A
             details: { apptId: appt.id, service: matchedSvc.name, start: bookingDate },
             timestamp: new Date().toISOString(),
             rawInput: leadMessage,
-            agentReasoning: 'Gemini confirmed booking and verified schedule.',
+            agentReasoning: 'AI model confirmed booking and verified schedule.',
           });
 
           return {
@@ -343,10 +343,10 @@ export async function processInboundMessage(input: AgentProcessInput): Promise<A
           ...actionBase,
           id: `act-${Date.now()}-reply`,
           actionType: 'greet',
-          details: { source: 'gemini' },
+          details: { source: 'llm' },
           timestamp: new Date().toISOString(),
           rawInput: leadMessage,
-          agentReasoning: 'Gemini API handled conversational turn.',
+          agentReasoning: 'AI model handled conversational turn.',
         });
 
         return {
