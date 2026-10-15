@@ -1,0 +1,27 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# In Render: New + → Blueprint → pick this repo. It asks for LLM_API_KEY once.
+services:
+  - type: web
+    name: call-ai-center
+    runtime: node
+    plan: free
+    buildCommand: npm install --include=dev --no-audit --no-fund && npx vite build
+    startCommand: npx tsx server.ts --prod
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Render can't run Ollama, so use a hosted OpenAI-compatible model.
+      # Groq has a free tier: create a key at https://console.groq.com/keys
+      - key: LLM_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: LLM_MODEL
+        value: llama-3.1-8b-instant
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_TIMEOUT_MS
+        value: "12000"
+      - key: TWILIO_VOICE
+        value: Polly.Joanna
+      - key: HUMAN_FORWARD_NUMBER
+        sync: false

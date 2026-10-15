@@ -66,6 +66,23 @@ callers who ask for a person.
 The only cost is the Twilio phone number itself (about $1.15/month, covered by
 Twilio's free trial credit).
 
+## 5. Host it online with Render
+
+Render can't run the local AI, so the app uses Groq's free hosted model instead.
+
+1. Get a free Groq API key at https://console.groq.com/keys.
+2. In Render: **New + → Blueprint**, connect this GitHub repo, and click **Apply**.
+   `render.yaml` sets the build, start command and settings. Paste your Groq key
+   into `LLM_API_KEY` when asked.
+3. When the deploy is live, copy your URL (e.g. `https://call-ai-center.onrender.com`)
+   and set these on your Twilio number (HTTP POST):
+   - A message comes in: `https://YOUR-URL/api/webhooks/twilio/sms`
+   - A call comes in: `https://YOUR-URL/api/webhooks/twilio/voice`
+
+> Render's free plan sleeps after 15 minutes with no traffic and takes up to a
+> minute to wake, which is longer than Twilio waits. The first call or text after
+> a quiet spell can fail. The Starter plan stays awake.
+
 ## Endpoints
 
 | Method | Path                                  | Purpose                          |
