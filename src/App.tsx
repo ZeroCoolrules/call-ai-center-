@@ -196,7 +196,7 @@ export default function App() {
             <span>• Port 3000 Active</span>
           </div>
           <div>
-            Twilio Webhooks & Live Phone Simulator • Powered by Gemini 3.8 Flash & Procedural Audio
+            Twilio Webhooks & Live Phone Simulator • Powered by a free local LLM (Ollama) & Procedural Audio
           </div>
         </div>
       </footer>

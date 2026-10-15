@@ -1,179 +1,174 @@
 import express, { Request, Response } from 'express';
-import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI } from '@google/genai';
+import fs from 'fs';
+import path from 'path';
 import dotenv from 'dotenv';
+import { chatCompletion, llmConfig, llmReachable } from './server/llm';
+import { buildMessages, isEscalation, parseAgentReply } from './server/agent';
+import { INITIAL_CLIENTS } from './src/data/seedData';
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+const PRODUCTION = process.env.NODE_ENV === 'production' || process.argv.includes('--prod');
 
 // Enable JSON and URL-encoded body parsing (for Twilio webhook form posts)
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Server-side Gemini initialization following gemini-api skill instructions
-const apiKey = process.env.GEMINI_API_KEY;
-let ai: GoogleGenAI | null = null;
-if (apiKey) {
-  ai = new GoogleGenAI({
-    apiKey,
-    httpOptions: {
-      headers: {
-        'User-Agent': 'aistudio-build',
-      },
-    },
-  });
+// Live phone conversations, keyed by caller number. Kept in memory so the AI
+// remembers earlier messages from the same person across SMS/voice turns.
+const MAX_HISTORY = 12;
+const phoneHistory = new Map<string, { role: string; text: string }[]>();
+
+function remember(key: string, role: 'user' | 'model', text: string) {
+  const h = phoneHistory.get(key) || [];
+  h.push({ role, text });
+  phoneHistory.set(key, h.slice(-MAX_HISTORY));
+}
+
+// Pick the business that owns the dialed number, falling back to the first one.
+function clientForNumber(to: string) {
+  const digits = String(to || '').replace(/\D/g, '').slice(-10);
+  return (
+    INITIAL_CLIENTS.find(c => c.trackingPhoneNumber.replace(/\D/g, '').slice(-10) === digits) ||
+    INITIAL_CLIENTS[0]
+  );
+}
+
+function xmlEscape(s: string): string {
+  return s.replace(/[<>&'"]/g, ch => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[ch]!));
+}
+
+function sendTwiml(res: Response, body: string) {
+  res.set('Content-Type', 'text/xml');
+  res.send(`<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n${body}\n</Response>`);
+}
+
+// Runs one AI turn for a live caller; falls back to a safe reply if the model is down or slow.
+async function liveAgentReply(from: string, to: string, text: string): Promise<string> {
+  const client = clientForNumber(to);
+  const lead = { name: 'Customer', phone: from };
+  let reply = `Hi! I can help schedule your appointment at ${client.name}. What day and time are you looking for?`;
+  try {
+    const raw = await chatCompletion(buildMessages(client, lead, phoneHistory.get(from), text));
+    if (raw) reply = parseAgentReply(raw).reply;
+  } catch (err: any) {
+    console.error('[AI] fallback reply used:', err.message);
+  }
+  remember(from, 'user', text);
+  remember(from, 'model', reply);
+  return reply;
 }
 
 // 1. Health endpoint
-app.get('/api/health', (req: Request, res: Response) => {
+app.get('/api/health', async (req: Request, res: Response) => {
   res.json({
     status: 'healthy',
     system: 'Agentic Dispatch Host',
-    hasGeminiKey: !!apiKey,
+    llm: { baseUrl: llmConfig.baseUrl, model: llmConfig.model, reachable: await llmReachable() },
     port: PORT,
   });
 });
 
-// 2. Server-Side Gemini Chat endpoint for appointment booking
+// 2. AI chat endpoint used by the dashboard / phone simulator
 app.post('/api/agent/chat', async (req: Request, res: Response) => {
+  const { message, client, lead, history } = req.body;
+  if (!message) {
+    return res.status(400).json({ error: 'Message text required' });
+  }
+
   try {
-    const { message, client, lead, history } = req.body;
-
-    if (!message) {
-      return res.status(400).json({ error: 'Message text required' });
-    }
-
-    if (!ai) {
-      // Fallback if no GEMINI_API_KEY is present
-      return res.json({
-        reply: `Hi! I can help schedule your appointment at ${client?.name || 'our office'}. What day and time are you looking for?`,
-        fallback: true,
-      });
-    }
-
-    const servicesList = client?.services?.map((s: any) => `- ${s.name} ($${s.price}, ${s.durationMinutes} mins)`).join('\n') || 'General consultation';
-    const rulesList = client?.rules?.join('\n') || '24h cancellation notice';
-
-    const systemPrompt = `You are an elite, ultra-responsive autonomous AI dispatch receptionist for "${client?.name || 'our business'}".
-Business Information:
-- Location: ${client?.location || '1420 Biscayne Blvd, Miami, FL'}
-- Business Hours: ${client?.businessHours?.startHour || 8}:00 AM to ${client?.businessHours?.endHour || 18}:00 PM
-- Services offered:
-${servicesList}
-- Cancellation policy and rules:
-${rulesList}
-
-Lead Details:
-- Name: ${lead?.name || 'Customer'}
-- Phone: ${lead?.phone || 'Customer Phone'}
-
-Your Goals:
-1. Greet warmly and confirm the service requested.
-2. Ask for day and time if not yet provided.
-3. If they give day and time (e.g. Tuesday at 6pm), confirm availability clearly.
-4. If confirming an appointment, format the response concisely:
-"Confirmed for [Day, Date, Year] at [Time] for [Duration] minutes. You’ll receive a reminder before the appointment."
-5. If the user is angry, frustrated, demanding a human, or asking for legal/lawyer/chargeback, say:
-"I understand completely. I am looping in ${client?.hostName || 'our team'} right away to assist you directly."
-6. Keep messages friendly, concise, and professional like a real high-end dispatcher.`;
-
-    const conversationContents: any[] = [];
-    if (history && Array.isArray(history)) {
-      for (const h of history) {
-        conversationContents.push({
-          role: h.role === 'model' ? 'model' : 'user',
-          parts: [{ text: h.text }],
-        });
-      }
-    }
-    conversationContents.push({
-      role: 'user',
-      parts: [{ text: message }],
-    });
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
-      contents: conversationContents,
-      config: {
-        systemInstruction: systemPrompt,
-        temperature: 0.3,
-      },
-    });
-
-    const reply = response.text || `Confirmed for your requested appointment at ${client?.name}.`;
-    const isBookingConfirmed = reply.toLowerCase().includes('confirmed for');
-
-    res.json({
-      reply,
-      isBookingConfirmed,
-    });
+    const raw = await chatCompletion(buildMessages(client, lead, history, message));
+    if (!raw) throw new Error('Empty model response');
+    res.json(parseAgentReply(raw));
   } catch (error: any) {
-    console.error('Gemini API Error:', error);
-    res.status(500).json({
-      error: 'Failed to process AI agent response',
-      details: error.message,
-    });
+    // Model offline: tell the browser so it uses its built-in deterministic engine.
+    console.error('[AI] chat error:', error.message);
+    res.status(503).json({ error: 'AI model unavailable', details: error.message });
   }
 });
 
 // 3. Twilio Inbound SMS Webhook
 // Twilio sends POST with Form URL-encoded: From, To, Body, MessageSid
+const OPT_OUT = new Set(['stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit']);
 app.post('/api/webhooks/twilio/sms', async (req: Request, res: Response) => {
-  const fromNumber = req.body.From || req.query.From || '+13057894421';
-  const toNumber = req.body.To || req.query.To || '+13055550199';
-  const bodyText = req.body.Body || req.query.Body || 'Hi, I need an appointment.';
+  const from = String(req.body.From || '');
+  const to = String(req.body.To || '');
+  const body = String(req.body.Body || '').trim();
+  console.log(`[Twilio SMS] ${from} -> ${to}: "${body}"`);
 
-  console.log(`[Twilio SMS Webhook] Inbound from ${fromNumber} to ${toNumber}: "${bodyText}"`);
-
-  // Default agent reply
-  let replyText = `Hi, I can help schedule that. What day and time are you looking for?`;
-  const lower = String(bodyText).toLowerCase();
-
-  if (lower.includes('stop') || lower.includes('unsubscribe') || lower.includes('cancel')) {
-    replyText = `You have successfully been unsubscribed. Reply START at any time to resubscribe.`;
-  } else if (lower.includes('tuesday') || lower.includes('july 7') || lower.includes('6pm') || lower.includes('6:00')) {
-    replyText = `Confirmed for Tuesday, July 7, 2026 at 6:00 PM for 60 minutes. You’ll receive a reminder before the appointment.`;
+  // Twilio handles STOP/opt-out replies itself; don't send anything extra.
+  if (!body || OPT_OUT.has(body.toLowerCase())) {
+    phoneHistory.delete(from);
+    return sendTwiml(res, '');
   }
 
-  // Return standard TwiML XML
-  const twiml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Message>${replyText}</Message>
-</Response>`;
-
-  res.set('Content-Type', 'text/xml');
-  res.send(twiml);
+  const reply = await liveAgentReply(from, to, body);
+  console.log(`[Twilio SMS] reply to ${from}: "${reply}"`);
+  sendTwiml(res, `    <Message>${xmlEscape(reply)}</Message>`);
 });
 
 // 4. Twilio Inbound Voice Webhook
-app.post('/api/webhooks/twilio/voice', (req: Request, res: Response) => {
-  const fromNumber = req.body.From || 'Unknown';
-  console.log(`[Twilio Voice Webhook] Inbound call from ${fromNumber}`);
-
-  const twiml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Say voice="Polly.Joanna">Thank you for calling. I am your autonomous AI dispatch agent. Please tell me what service you would like to book.</Say>
-    <Gather input="speech" timeout="5" action="/api/webhooks/twilio/voice/gather">
-        <Say voice="Polly.Joanna">Listening for your preferred day and time.</Say>
+const VOICE = process.env.TWILIO_VOICE || 'Polly.Joanna';
+function gather(prompt: string): string {
+  return `    <Gather input="speech" speechTimeout="auto" action="/api/webhooks/twilio/voice/gather" method="POST">
+        <Say voice="${VOICE}">${xmlEscape(prompt)}</Say>
     </Gather>
-</Response>`;
+    <Say voice="${VOICE}">I didn't catch that. Please call back or send us a text. Goodbye.</Say>`;
+}
 
-  res.set('Content-Type', 'text/xml');
-  res.send(twiml);
+app.post('/api/webhooks/twilio/voice', (req: Request, res: Response) => {
+  const from = String(req.body.From || 'Unknown');
+  const client = clientForNumber(String(req.body.To || ''));
+  console.log(`[Twilio Voice] inbound call from ${from}`);
+  phoneHistory.delete(from);
+  sendTwiml(res, gather(`Thank you for calling ${client.name}. What service would you like to book, and what day and time works for you?`));
 });
 
-// 5. Mount Vite Middlewares in development mode
+// 5. Speech result from <Gather>: answer with the AI and keep listening
+app.post('/api/webhooks/twilio/voice/gather', async (req: Request, res: Response) => {
+  const from = String(req.body.From || 'Unknown');
+  const to = String(req.body.To || '');
+  const speech = String(req.body.SpeechResult || '').trim();
+  console.log(`[Twilio Voice] ${from} said: "${speech}"`);
+
+  if (!speech) {
+    return sendTwiml(res, gather('Sorry, could you repeat that?'));
+  }
+
+  const reply = await liveAgentReply(from, to, speech);
+  if (isEscalation(reply) && process.env.HUMAN_FORWARD_NUMBER) {
+    return sendTwiml(
+      res,
+      `    <Say voice="${VOICE}">${xmlEscape(reply)}</Say>\n    <Dial>${xmlEscape(process.env.HUMAN_FORWARD_NUMBER)}</Dial>`,
+    );
+  }
+  sendTwiml(res, gather(reply));
+});
+
+// 6. Frontend: Vite dev middleware, or the prebuilt bundle in production
 async function startServer() {
-  const vite = await createViteServer({
-    server: { middlewareMode: true },
-    appType: 'spa',
-  });
+  if (PRODUCTION) {
+    const dist = path.resolve('dist');
+    if (!fs.existsSync(path.join(dist, 'index.html'))) {
+      throw new Error('dist/ not found. Run "npm run build" first.');
+    }
+    app.use(express.static(dist));
+    app.get('*', (req, res) => res.sendFile(path.join(dist, 'index.html')));
+  } else {
+    const { createServer: createViteServer } = await import('vite');
+    const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
+    app.use(vite.middlewares);
+  }
 
-  app.use(vite.middlewares);
-
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Agentic Dispatch Host System running on http://0.0.0.0:${PORT}`);
+  app.listen(PORT, '0.0.0.0', async () => {
+    console.log(`🚀 Agentic Dispatch Host running on http://localhost:${PORT} (${PRODUCTION ? 'production' : 'dev'})`);
+    const ok = await llmReachable();
+    console.log(
+      ok
+        ? `🤖 AI model ready: ${llmConfig.model} @ ${llmConfig.baseUrl}`
+        : `⚠️  AI model not reachable at ${llmConfig.baseUrl}. Install Ollama and run "ollama pull ${llmConfig.model}". Using built-in fallback replies until then.`,
+    );
   });
 }
 
