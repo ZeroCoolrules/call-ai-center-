@@ -36,6 +36,13 @@ services:
       # Your Twilio phone number, e.g. +13055550100
       - key: TWILIO_FROM_NUMBER
         sync: false
+      # AI Text Assistant for your own number (README section 7)
+      - key: SMS_GATEWAY_USER
+        sync: false
+      - key: SMS_GATEWAY_PASSWORD
+        sync: false
+      - key: SMS_GATEWAY_SIGNING_KEY
+        sync: false
       # Optional: Google Calendar + Meet links (README step 6)
       - key: GOOGLE_CLIENT_ID
         sync: false

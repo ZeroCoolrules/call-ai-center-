@@ -13,6 +13,7 @@ import { handleAppointmentSms, startReminders } from './server/reminders';
 import { addDnc } from './server/compliance';
 import { addLine, customerConferenceTwiml, findCallBySid, newCall, openingTwiml } from './server/calls';
 import { db } from './server/store';
+import { registerTexts } from './server/textAssistant';
 dotenv.config();
 
 const app = express();
@@ -26,7 +27,8 @@ app.set('trust proxy', true);
 app.use(basicAuth);
 
 // Enable JSON and URL-encoded body parsing (for Twilio webhook form posts)
-app.use(express.json({ limit: '15mb' })); // big enough for large contact lists
+// Keep the raw bytes too: the phone gateway signs the exact body it sent.
+app.use(express.json({ limit: '15mb', verify: (req, res, buf) => ((req as any).rawBody = buf) })); // big enough for large contact lists
 app.use(express.urlencoded({ extended: true }));
 
 // Remember our public address (used when placing outbound calls) and only
@@ -200,7 +202,10 @@ app.post('/api/webhooks/twilio/voice/gather', async (req: Request, res: Response
 // 6. Outbound dialer, reminders, scripts, settings + their Twilio webhooks
 registerOutbound(app);
 
-// 7. Frontend: Vite dev middleware, or the prebuilt bundle in production
+// 7. AI Text Assistant: texts to your own number (Google Messages) via the Android gateway app
+registerTexts(app);
+
+// 8. Frontend: Vite dev middleware, or the prebuilt bundle in production
 async function startServer() {
   if (PRODUCTION) {
     const dist = path.resolve('dist');

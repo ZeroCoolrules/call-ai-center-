@@ -204,6 +204,68 @@ and written consent for sales calls. If you call new prospects, check your list
 against the [National Do Not Call Registry](https://telemarketing.donotcall.gov)
 first. This isn't legal advice; check the rules for your industry and state.
 
+## 7. AI Text Assistant for your own number (Google Messages)
+
+Already texting customers from your own phone in Google Messages? The **AI Text
+Assistant** tab takes over those texts without changing your number. Google
+Messages has no API, so a free open-source app,
+[SMS Gateway for Android](https://sms-gate.app), runs on the same phone. It
+passes each new text to this app and sends the replies from your SIM. Texts and
+replies still show up in Google Messages as usual.
+
+### How it learns
+
+1. Every new text is sorted into a type: new booking, reschedule, cancel, hours,
+   address, prices, services, "thanks/OK", anything else, or upset/urgent.
+2. The AI writes a draft. In **Review** you approve it, edit it, ask for a
+   redraft ("say we're closed Monday"), or mark it as needing no reply. If the AI
+   agreed on an open time, approving it also books the appointment.
+3. Each type keeps score. Once you've handled **10** texts of that type and sent
+   **90%** of the recent drafts without changes, that type switches to
+   **auto-reply** (you can change both numbers in Setup, or flip a type by hand
+   in **Learning**).
+4. Your edited replies become examples, so the drafts start sounding like you.
+5. Some texts always wait for you: upset customers, refund or legal talk,
+   requests for a person, anything unclear, and any auto-reply the AI isn't sure
+   about. **Pause all auto-replies** in Learning stops everything at once.
+
+STOP / UNSUBSCRIBE adds the number to the Do Not Call list and confirms once;
+START undoes it. Replies to appointment reminders (C / R / X) work like before.
+
+### Setup
+
+1. On the Android phone that runs Google Messages, install **SMS Gateway for
+   Android** (Google Play, or the APK from sms-gate.app) and allow SMS access.
+2. In the app turn on **Cloud server** and tap **Online**. It shows a username
+   and password.
+3. In the app open **Settings → Webhooks** and copy the **Signing key**.
+4. In Render → Environment (or your `.env`) add:
+
+   | Key                       | Value                          |
+   | ------------------------- | ------------------------------ |
+   | `SMS_GATEWAY_USER`        | Username from step 2           |
+   | `SMS_GATEWAY_PASSWORD`    | Password from step 2           |
+   | `SMS_GATEWAY_SIGNING_KEY` | Signing key from step 3        |
+   | `ADMIN_PASSWORD`          | Needed, since this sends texts |
+
+5. Open the dashboard → **AI Text Assistant → Setup**. Fill in your prices,
+   services and common answers (the AI only quotes what's written there), then
+   click **Connect**. This tells the phone app to send new texts to
+   `https://YOUR-URL/api/webhooks/sms-gateway`.
+6. Use **Try it** in Setup to see a draft without sending anything, then text
+   your number from another phone.
+
+Keep the phone charged and online, and turn off battery optimization for the
+gateway app or Android may pause it. If the server is asleep (Render free
+plan), the app retries after 10, 20, 40 seconds and so on, so texts aren't lost,
+just slower. Appointment confirmations and reminder
+texts also go out from your own number once the gateway is set up. Calls still
+use Twilio.
+
+> Local mode (no internet relay): set `SMS_GATEWAY_URL=http://<phone-ip>:8080`
+> and use the app's Local server login. The phone must be able to reach this
+> server over https.
+
 ## Endpoints
 
 | Method | Path                                  | Purpose                          |
@@ -215,3 +277,5 @@ first. This isn't legal advice; check the rules for your industry and state.
 | POST   | `/api/webhooks/twilio/voice/gather`   | Caller speech → AI spoken reply  |
 | POST   | `/api/webhooks/twilio/call/status`    | Call ended / answered updates    |
 | *      | `/api/outbound/*`                     | Dialer, reminders, scripts (dashboard, password protected) |
+| POST   | `/api/webhooks/sms-gateway`           | Text to your own number (Android gateway, signed) |
+| *      | `/api/texts/*`                        | AI Text Assistant drafts, learning, setup (password protected) |

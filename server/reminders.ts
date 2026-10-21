@@ -4,6 +4,7 @@ import type { Appointment, CallRecord } from '../src/types/outbound';
 import { db, save } from './store';
 import { canCallNow, isDnc, addDnc, normalizePhone } from './compliance';
 import { callerId, createCall, publicBaseUrl, say, twilioConfigured } from './twilio';
+import { textingConfigured } from './phoneGateway';
 import {
   cancelAppointment,
   confirmAppointment,
@@ -37,12 +38,12 @@ function dueOffset(a: Appointment): number | null {
 }
 
 export async function sendReminder(a: Appointment): Promise<string> {
-  if (!twilioConfigured()) return 'Twilio is not set up';
+  if (!textingConfigured()) return 'Texting is not set up (Twilio or phone gateway)';
   if (isDnc(a.phone)) return 'Number is on the Do Not Call list';
   const channel = db.settings.reminderChannel;
   const wantCall = channel !== 'sms' && a.status !== 'confirmed';
   const hours = { ...db.settings.defaultDialer, callingHoursStart: 8, callingHoursEnd: 21, callingDays: [0, 1, 2, 3, 4, 5, 6], timezone: db.settings.businessHours.timezone, unknownTimezoneMode: 'campaign' as const };
-  const callOk = wantCall && !!publicBaseUrl() && canCallNow(db.settings.businessHours.timezone, hours);
+  const callOk = wantCall && twilioConfigured() && !!publicBaseUrl() && canCallNow(db.settings.businessHours.timezone, hours);
 
   let sent = '';
   if (channel !== 'call' || !callOk) {
@@ -81,7 +82,7 @@ export async function sendReminder(a: Appointment): Promise<string> {
 }
 
 async function tick() {
-  if (!twilioConfigured()) return;
+  if (!textingConfigured()) return;
   for (const a of db.appointments) {
     if (!upcoming(a)) continue;
     const offset = dueOffset(a);
