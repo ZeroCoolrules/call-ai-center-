@@ -25,6 +25,7 @@ import { TrackingNumbersModal } from './components/TrackingNumbersModal';
 import { PhoneSimulatorModal } from './components/PhoneSimulatorModal';
 import { LiveProductionDeployModal } from './components/LiveProductionDeployModal';
 import { OutboundDialer } from './components/outbound/OutboundDialer';
+import { TextAssistant } from './components/texts/TextAssistant';
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<NavTab>(() =>
@@ -127,6 +128,8 @@ export default function App() {
         )}
 
         {currentTab === 'dialer' && <OutboundDialer />}
+
+        {currentTab === 'texts' && <TextAssistant />}
 
         {currentTab === 'inbox' && (
           <InboxConversations
