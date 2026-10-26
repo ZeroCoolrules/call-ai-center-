@@ -5,6 +5,8 @@ services:
     name: call-ai-center
     runtime: node
     plan: free
+    # Starter keeps the app awake (dialer + reminders) and allows the data disk below.
+    plan: starter
     buildCommand: npm install --include=dev --no-audit --no-fund && npx vite build
     startCommand: npx tsx server.ts --prod
     healthCheckPath: /api/health
@@ -25,3 +27,33 @@ services:
         value: Polly.Joanna
       - key: HUMAN_FORWARD_NUMBER
         sync: false
+      # ── Outbound dialer & reminders (see README "Outbound dialer") ──
+      # Password for the dashboard. The dialer stays locked until this is set.
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      # Your Twilio phone number, e.g. +13055550100
+      - key: TWILIO_FROM_NUMBER
+        sync: false
+      # AI Text Assistant for your own number (README section 7)
+      - key: SMS_GATEWAY_USER
+        sync: false
+      - key: SMS_GATEWAY_PASSWORD
+        sync: false
+      - key: SMS_GATEWAY_SIGNING_KEY
+        sync: false
+      # Optional: Google Calendar + Meet links (README step 6)
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      # Saved lists, scripts and appointments live on the disk below.
+      - key: DATA_DIR
+        value: /var/data
+    disk:
+      name: data
+      mountPath: /var/data
+      sizeGB: 1
