@@ -4,7 +4,8 @@ services:
   - type: web
     name: call-ai-center
     runtime: node
-    plan: free
+    # Starter keeps the app awake (dialer + reminders) and allows the data disk below.
+    plan: starter
     buildCommand: npm install --include=dev --no-audit --no-fund && npx vite build
     startCommand: npx tsx server.ts --prod
     healthCheckPath: /api/health
@@ -48,11 +49,10 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
-    # To keep contacts/appointments across deploys and keep the dialer awake,
-    # switch to the Starter plan and uncomment these lines (README step 3):
-    # plan: starter
-    # disk:
-    #   name: data
-    #   mountPath: /var/data
-    #   sizeGB: 1
-    # and add under envVars:  - key: DATA_DIR / value: /var/data
+      # Saved lists, scripts and appointments live on the disk below.
+      - key: DATA_DIR
+        value: /var/data
+    disk:
+      name: data
+      mountPath: /var/data
+      sizeGB: 1
