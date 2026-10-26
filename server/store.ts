@@ -17,6 +17,7 @@ import type {
   DialerSettings,
   DncEntry,
 } from '../src/types/outbound';
+import type { CategoryStats, TextDraft, TextExample, TextMessage, TextSettings } from '../src/types/texts';
 import { DEFAULT_SCRIPTS } from './scripts';
 
 export interface Db {
@@ -29,9 +30,22 @@ export interface Db {
   calls: CallRecord[];
   dnc: DncEntry[];
   google: { refreshToken?: string; connectedAt?: string };
+  texts: TextsData;
+}
+
+// AI Text Assistant (texts to your own number via the Android gateway app).
+export interface TextsData {
+  settings: TextSettings;
+  messages: TextMessage[];
+  drafts: TextDraft[];
+  categories: Partial<Record<string, CategoryStats>>;
+  examples: TextExample[];
+  seen: string[]; // gateway message ids already handled (the app retries)
 }
 
 const MAX_CALLS_KEPT = 3000;
+const MAX_TEXTS_KEPT = 5000;
+const MAX_DRAFTS_KEPT = 1000;
 
 export const DATA_DIR = path.resolve(process.env.DATA_DIR || 'data');
 const DB_FILE = path.join(DATA_DIR, 'outbound.json');
@@ -69,6 +83,20 @@ function defaultSettings(): AppSettings {
   };
 }
 
+export const DEFAULT_TEXT_SETTINGS: TextSettings = {
+  enabled: true,
+  autoReplyPaused: false,
+  autoPromote: true,
+  promoteAfter: 10,
+  promoteAccuracy: 90,
+  businessInfo: '',
+  signature: '',
+};
+
+function freshTexts(): TextsData {
+  return { settings: { ...DEFAULT_TEXT_SETTINGS }, messages: [], drafts: [], categories: {}, examples: [], seen: [] };
+}
+
 function freshDb(): Db {
   return {
     version: 1,
@@ -80,6 +108,7 @@ function freshDb(): Db {
     calls: [],
     dnc: [],
     google: {},
+    texts: freshTexts(),
   };
 }
 
@@ -92,6 +121,7 @@ function load(): Db {
       ...raw,
       settings: { ...base.settings, ...raw.settings, defaultDialer: { ...DEFAULT_DIALER, ...raw.settings?.defaultDialer } },
       google: raw.google || {},
+      texts: { ...base.texts, ...raw.texts, settings: { ...DEFAULT_TEXT_SETTINGS, ...raw.texts?.settings } },
     };
   } catch (err: any) {
     if (err.code !== 'ENOENT') console.error('[store] could not read', DB_FILE, err.message);
@@ -108,6 +138,14 @@ function writeNow() {
   try {
     fs.mkdirSync(DATA_DIR, { recursive: true });
     if (db.calls.length > MAX_CALLS_KEPT) db.calls.splice(0, db.calls.length - MAX_CALLS_KEPT);
+    const t = db.texts;
+    if (t.messages.length > MAX_TEXTS_KEPT) t.messages.splice(0, t.messages.length - MAX_TEXTS_KEPT);
+    if (t.drafts.length > MAX_DRAFTS_KEPT) {
+      const extra = t.drafts.length - MAX_DRAFTS_KEPT;
+      const old = new Set(t.drafts.filter(d => d.status !== 'pending').slice(0, extra));
+      t.drafts = t.drafts.filter(d => !old.has(d));
+    }
+    if (t.seen.length > 500) t.seen.splice(0, t.seen.length - 500);
     const tmp = `${DB_FILE}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify(db));
     fs.renameSync(tmp, DB_FILE);

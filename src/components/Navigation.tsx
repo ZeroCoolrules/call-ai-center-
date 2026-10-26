@@ -15,6 +15,7 @@ import {
   Rocket,
   Sparkles,
   PhoneOutgoing,
+  MessageSquareText,
 } from 'lucide-react';
 import { audioVoice } from '../lib/audioVoice';
 import { AmbientSoundManager } from './AmbientSoundManager';
@@ -22,6 +23,7 @@ import { AmbientSoundManager } from './AmbientSoundManager';
 export type NavTab = 
   | 'overview' 
   | 'dialer'
+  | 'texts'
   | 'inbox' 
   | 'appointments' 
   | 'calls' 
@@ -200,6 +202,18 @@ export const Navigation: React.FC<NavigationProps> = ({
         >
           <PhoneOutgoing className="w-3.5 h-3.5 text-emerald-400" />
           Outbound Dialer
+        </button>
+
+        <button
+          onClick={() => onTabChange('texts')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-md text-xs font-bold transition-all whitespace-nowrap ${
+            currentTab === 'texts'
+              ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 shadow-sm'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+          }`}
+        >
+          <MessageSquareText className="w-3.5 h-3.5 text-emerald-400" />
+          AI Text Assistant
         </button>
 
         <button

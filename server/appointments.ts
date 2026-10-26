@@ -5,7 +5,7 @@ import { db, newId, save } from './store';
 import { isDnc, normalizePhone, zonedParts, zonedToUtc } from './compliance';
 import { formatWhen, firstName } from './scripts';
 import { cancelCalendarEvent, syncAppointmentToCalendar } from './google';
-import { sendSms, twilioConfigured } from './twilio';
+import { sendText, textingConfigured } from './phoneGateway';
 
 const SLOT_STEP_MIN = 30;
 
@@ -182,9 +182,9 @@ export function reminderSms(a: Appointment): string {
 }
 
 export async function textAppointment(a: Appointment, body: string, what: string): Promise<boolean> {
-  if (!twilioConfigured() || !a.phone || isDnc(a.phone)) return false;
+  if (!textingConfigured() || !a.phone || isDnc(a.phone)) return false;
   try {
-    await sendSms(a.phone, body);
+    await sendText(a.phone, body);
     log(a, `Text sent: ${what}`);
     return true;
   } catch (err: any) {
