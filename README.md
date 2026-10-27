@@ -127,13 +127,14 @@ else can make calls on your account.
 **Step 3. Keep your data and keep it awake (needed for real use).** On the
 free plan Render wipes saved files on every deploy and puts the app to sleep
 after 15 quiet minutes, so lists and appointments disappear and reminders
-don't go out while it sleeps. To fix both:
+don't go out while it sleeps. `render.yaml` already asks for the **Starter**
+plan ($7/month) with a 1 GB disk at `/var/data` (about $0.25/month) and sets
+`DATA_DIR` to it. If Render doesn't pick that up on its own, open the service
+→ **Blueprint** → **Manual Sync**, or set it by hand:
 
-1. In Render, open the service → **Settings** → **Instance Type** → choose
-   **Starter** ($7/month).
-2. Open **Disks** → **Add Disk**: name `data`, mount path `/var/data`, size
-   1 GB (about $0.25/month).
-3. In **Environment** add `DATA_DIR` = `/var/data`.
+1. Service → **Settings** → **Instance Type** → **Starter**.
+2. **Disks** → **Add Disk**: name `data`, mount path `/var/data`, size 1 GB.
+3. **Environment** → add `DATA_DIR` = `/var/data`.
 
 The dialer screen shows a yellow warning until this is done.
 
