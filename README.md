@@ -267,6 +267,53 @@ use Twilio.
 > and use the app's Local server login. The phone must be able to reach this
 > server over https.
 
+## 8. Host it online for free (Oracle Cloud)
+
+Run everything — app and AI — on an Oracle Cloud "Always Free" server so your
+computer doesn't need to stay on. Unlike Render (section 5), the AI runs on the
+server itself, so no Groq key is needed and nothing is billed.
+
+1. **Create an account** at https://www.oracle.com/cloud/free/. Oracle asks for a
+   card to verify identity; Always Free resources are not charged unless you
+   upgrade your account.
+2. **Create the server:** Compute → Instances → *Create instance*.
+   - Image: **Ubuntu 24.04** (or 22.04)
+   - Shape: *Change shape* → **Ampere** → `VM.Standard.A1.Flex`, **4 OCPUs, 24 GB RAM**
+     (the "Always Free-eligible" label must show)
+   - Download the SSH private key, then *Create*.
+   - "Out of capacity"? Try another Availability Domain, or retry later.
+3. **Open the web ports:** on the instance page click the **Subnet** →
+   **Default Security List** → *Add Ingress Rules*: Source CIDR `0.0.0.0/0`,
+   TCP, Destination Port `80,443`.
+4. **Connect** (replace with your key file and the instance's Public IP):
+
+   ```bash
+   ssh -i path/to/ssh-key.key ubuntu@YOUR_PUBLIC_IP
+   ```
+5. **Run the setup script** on the server:
+
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/ZeroCoolrules/call-ai-center-/main/deploy/oracle-setup.sh | sudo bash
+   ```
+
+   It installs Node.js, Ollama and the AI model, starts the app as a service
+   that survives reboots, and sets up free HTTPS at
+   `https://<your-ip-with-dashes>.sslip.io` (no domain purchase needed). It asks
+   you to choose a dashboard password (username `admin`), which also unlocks the
+   outbound dialer and text assistant. At the end it prints the two Twilio
+   webhook URLs to paste in.
+6. For the dialer, reminders or text assistant (sections 6–7), add their
+   settings (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, etc.) on the server:
+   `sudo nano /opt/call-ai-center/.env`, then
+   `sudo systemctl restart call-ai-center`. Saved data lives in
+   `/opt/call-ai-center/data` and survives updates.
+
+To update after new code is pushed, run the same command again.
+Logs: `sudo journalctl -u call-ai-center -f`.
+
+> Oracle may reclaim Always Free servers that sit nearly idle for a week.
+> If that happens, create a new one and re-run the script.
+
 ## Endpoints
 
 | Method | Path                                  | Purpose                          |
