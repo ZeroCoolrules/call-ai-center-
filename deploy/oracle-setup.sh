@@ -11,7 +11,7 @@
 # Optional environment variables:
 #   LLM_MODEL           AI model to download (default: llama3.2)
 #   DOMAIN              Your own domain (default: <public-ip>.sslip.io, no purchase needed)
-#   DASHBOARD_PASSWORD  Password for the web dashboard (asked interactively if unset)
+#   DASHBOARD_PASSWORD  Password for the web dashboard, user "admin" (asked if unset)
 set -euo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/ZeroCoolrules/call-ai-center-.git}"
@@ -115,30 +115,45 @@ if [[ -z "${DOMAIN:-}" ]]; then
 fi
 
 if [[ -z "${DASHBOARD_PASSWORD:-}" && -r /dev/tty ]]; then
-  read -rsp "Choose a dashboard password (leave empty to keep the existing one / none): " DASHBOARD_PASSWORD </dev/tty || true
+  read -rsp "Choose a dashboard password (leave empty to keep the current one): " DASHBOARD_PASSWORD </dev/tty || true
   echo
 fi
 
-AUTH_BLOCK=""
+# Saves KEY='value' in the app's .env (single quotes are taken literally by dotenv).
+set_env() {
+  local key="$1" value="$2" file="$APP_DIR/.env"
+  grep -v "^${key}=" "$file" > "$file.tmp" || true
+  printf "%s='%s'\n" "$key" "$value" >> "$file.tmp"
+  mv "$file.tmp" "$file"
+  chown "$APP_USER:$APP_USER" "$file"
+  chmod 600 "$file"
+}
+
+# Twilio signature checks and outbound calls need the public https address.
+set_env PUBLIC_BASE_URL "https://$DOMAIN"
+
 if [[ -n "${DASHBOARD_PASSWORD:-}" ]]; then
-  HASH="$(caddy hash-password --plaintext "$DASHBOARD_PASSWORD")"
-  # Twilio webhooks must stay reachable without a password.
-  AUTH_BLOCK="	@dashboard not path /api/webhooks/*
-	basic_auth @dashboard {
-		admin $HASH
-	}"
-elif [[ -f /etc/caddy/Caddyfile ]] && grep -q basic_auth /etc/caddy/Caddyfile; then
-  AUTH_BLOCK="$(sed -n '/@dashboard/,/^\t}/p' /etc/caddy/Caddyfile)"
+  if [[ "$DASHBOARD_PASSWORD" == *"'"* ]]; then
+    echo "The password can't contain a single quote ('). Re-run the script and pick another." >&2
+    exit 1
+  fi
+  # The app asks for it itself (user "admin"); Twilio webhooks stay open.
+  set_env ADMIN_PASSWORD "$DASHBOARD_PASSWORD"
+elif ! grep -qE "^ADMIN_PASSWORD=['\"]?[^'\"]" "$APP_DIR/.env"; then
+  echo "WARNING: no dashboard password is set, so anyone with the address can open the dashboard."
+  echo "         The outbound dialer stays locked until you re-run this script and choose one."
 fi
 
 cat > /etc/caddy/Caddyfile <<EOF
 $DOMAIN {
-$AUTH_BLOCK
 	reverse_proxy localhost:3000
 }
 EOF
 systemctl enable caddy
 systemctl reload caddy || systemctl restart caddy
+
+# Load the new .env values.
+systemctl restart call-ai-center
 
 step "Checking the app"
 sleep 3
@@ -149,7 +164,7 @@ cat <<EOF
 
 ============================================================
  Done! Your app is live at:  https://$DOMAIN
- Dashboard login user:        admin  (if you set a password)
+ Dashboard login:             user "admin" + the password you chose
 
  Paste these into Twilio (Phone Numbers > your number, HTTP POST):
    A message comes in:  https://$DOMAIN/api/webhooks/twilio/sms

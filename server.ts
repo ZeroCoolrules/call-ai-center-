@@ -5,15 +5,39 @@ import dotenv from 'dotenv';
 import { chatCompletion, llmConfig, llmReachable } from './server/llm';
 import { buildMessages, isEscalation, parseAgentReply } from './server/agent';
 import { INITIAL_CLIENTS } from './src/data/seedData';
+import { basicAuth } from './server/auth';
+import { rememberBaseUrl, requireTwilioSignature, callerId } from './server/twilio';
+import { registerOutbound } from './server/outboundRoutes';
+import { startDialer } from './server/dialer';
+import { handleAppointmentSms, startReminders } from './server/reminders';
+import { addDnc } from './server/compliance';
+import { addLine, customerConferenceTwiml, findCallBySid, newCall, openingTwiml } from './server/calls';
+import { db } from './server/store';
+import { registerTexts } from './server/textAssistant';
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const PRODUCTION = process.env.NODE_ENV === 'production' || process.argv.includes('--prod');
 
+// Render (and most hosts) sit behind a proxy; trust it so https URLs are right.
+app.set('trust proxy', true);
+
+// Password-protect the dashboard and API when ADMIN_PASSWORD is set.
+app.use(basicAuth);
+
 // Enable JSON and URL-encoded body parsing (for Twilio webhook form posts)
-app.use(express.json());
+// Keep the raw bytes too: the phone gateway signs the exact body it sent.
+app.use(express.json({ limit: '15mb', verify: (req, res, buf) => ((req as any).rawBody = buf) })); // big enough for large contact lists
 app.use(express.urlencoded({ extended: true }));
+
+// Remember our public address (used when placing outbound calls) and only
+// accept webhooks that Twilio really signed.
+app.use((req, res, next) => {
+  rememberBaseUrl(req);
+  next();
+});
+app.use('/api/webhooks/twilio', requireTwilioSignature);
 
 // Live phone conversations, keyed by caller number. Kept in memory so the AI
 // remembers earlier messages from the same person across SMS/voice turns.
@@ -98,9 +122,18 @@ app.post('/api/webhooks/twilio/sms', async (req: Request, res: Response) => {
   console.log(`[Twilio SMS] ${from} -> ${to}: "${body}"`);
 
   // Twilio handles STOP/opt-out replies itself; don't send anything extra.
+  // We also add them to our Do Not Call list so the dialer skips them.
   if (!body || OPT_OUT.has(body.toLowerCase())) {
     phoneHistory.delete(from);
+    if (body) addDnc(from, `texted ${body.toUpperCase()}`);
     return sendTwiml(res, '');
+  }
+
+  // Replies to appointment reminders (C / R / X, or "can we move it?").
+  const apptReply = await handleAppointmentSms(from, body);
+  if (apptReply !== null) {
+    console.log(`[Twilio SMS] appointment reply to ${from}: "${apptReply}"`);
+    return sendTwiml(res, apptReply ? `    <Message>${xmlEscape(apptReply)}</Message>` : '');
   }
 
   const reply = await liveAgentReply(from, to, body);
@@ -122,7 +155,23 @@ app.post('/api/webhooks/twilio/voice', (req: Request, res: Response) => {
   const client = clientForNumber(String(req.body.To || ''));
   console.log(`[Twilio Voice] inbound call from ${from}`);
   phoneHistory.delete(from);
-  sendTwiml(res, gather(`Thank you for calling ${client.name}. What service would you like to book, and what day and time works for you?`));
+  // Track the call so it shows under Live Calls and can be taken over.
+  const call = newCall({
+    kind: 'inbound',
+    direction: 'inbound',
+    from,
+    to: String(req.body.To || callerId()),
+    callSid: String(req.body.CallSid || ''),
+    state: 'ai',
+    answeredAt: new Date().toISOString(),
+  });
+  // A script chosen in Dialer Settings → Inbound script runs the call.
+  if (db.settings.inboundScriptId && db.scripts.some(s => s.id === db.settings.inboundScriptId)) {
+    return sendTwiml(res, openingTwiml(call));
+  }
+  const greeting = `Thank you for calling ${client.name}. What service would you like to book, and what day and time works for you?`;
+  addLine(call, 'ai', greeting);
+  sendTwiml(res, gather(greeting));
 });
 
 // 5. Speech result from <Gather>: answer with the AI and keep listening
@@ -131,12 +180,16 @@ app.post('/api/webhooks/twilio/voice/gather', async (req: Request, res: Response
   const to = String(req.body.To || '');
   const speech = String(req.body.SpeechResult || '').trim();
   console.log(`[Twilio Voice] ${from} said: "${speech}"`);
+  const call = findCallBySid(String(req.body.CallSid || ''));
+  if (call?.takenOver) return sendTwiml(res, customerConferenceTwiml(call, 'One moment please.'));
 
   if (!speech) {
     return sendTwiml(res, gather('Sorry, could you repeat that?'));
   }
 
+  if (call) addLine(call, 'caller', speech);
   const reply = await liveAgentReply(from, to, speech);
+  if (call) addLine(call, 'ai', reply);
   if (isEscalation(reply) && process.env.HUMAN_FORWARD_NUMBER) {
     return sendTwiml(
       res,
@@ -146,7 +199,13 @@ app.post('/api/webhooks/twilio/voice/gather', async (req: Request, res: Response
   sendTwiml(res, gather(reply));
 });
 
-// 6. Frontend: Vite dev middleware, or the prebuilt bundle in production
+// 6. Outbound dialer, reminders, scripts, settings + their Twilio webhooks
+registerOutbound(app);
+
+// 7. AI Text Assistant: texts to your own number (Google Messages) via the Android gateway app
+registerTexts(app);
+
+// 8. Frontend: Vite dev middleware, or the prebuilt bundle in production
 async function startServer() {
   if (PRODUCTION) {
     const dist = path.resolve('dist');
@@ -160,6 +219,9 @@ async function startServer() {
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
     app.use(vite.middlewares);
   }
+
+  startDialer();
+  startReminders();
 
   app.listen(PORT, '0.0.0.0', async () => {
     console.log(`🚀 Agentic Dispatch Host running on http://localhost:${PORT} (${PRODUCTION ? 'production' : 'dev'})`);
